@@ -1,12 +1,3 @@
-use crate::{RenderContext, ElVar};
-use crate::hook::el_var;
-use wasm_bindgen::JsCast;
-use tracked_call_macro::tracked_call;
-use crate::tracked_call::__TrackedCall;
-use crate::tracked_call_stack::__TrackedCallStack;
-
-// ------- Helpers ------
-
 pub fn window() -> web_sys::Window {
     web_sys::window().expect("window")
 }
@@ -16,6 +7,7 @@ pub fn document() -> web_sys::Document {
         .document()
         .expect("document")
 }
+<<<<<<< HEAD
 
 // ------ Node ------
 
@@ -82,3 +74,5 @@ pub fn dom_text(rcx: RenderContext, text: &str) {
         });
     });
 }
+=======
+>>>>>>> a70fd9927f5b90424db36fda687d6c6344278925

@@ -1,31 +1,29 @@
-use wasm_bindgen::JsCast;
-use crate::{RenderContext, dom::dom_element, Element, __TrackedCall, __TrackedCallStack, IntoElement, ApplyToElement, render, element_macro};
+use crate::*;
+use std::marker::PhantomData;
 
 // ------ ------
 //   Element 
 // ------ ------
 
-element_macro!(el, El::default());
+make_flags!(Child);
 
-#[derive(Default)]
-pub struct El<'a> {
-    child: Option<Box<dyn Element + 'a>>,
+pub struct El<ChildFlag> {
+    raw_el: RawEl,
+    flags: PhantomData<ChildFlag>
 }
 
-impl<'a> Element for El<'a> {
-    #[render]
-    fn render(&mut self, rcx: RenderContext) {
-        // log!("el, index: {}", rcx.index);
+impl El<ChildFlagNotSet> {
+    pub fn new() -> Self {
+        Self {
+            raw_el: RawEl::new("div").attr("class", "el"),
+            flags: PhantomData,
+        }
+    }
+}
 
-        let node = dom_element(rcx, |rcx| {
-            if let Some(child) = self.child.as_mut() {
-                child.render(rcx)
-            }
-        });
-        node.update_mut(|node| {
-            let element = node.node_ws.unchecked_ref::<web_sys::Element>();
-            element.set_attribute("class", "el").unwrap();
-        });
+impl Element for El<ChildFlagSet> {
+    fn into_raw_element(self) -> RawElement {
+        self.raw_el.into()
     }
 }
 
@@ -33,17 +31,27 @@ impl<'a> Element for El<'a> {
 //  Attributes 
 // ------ ------
 
-impl<'a> El<'a> {
-    pub fn child(mut self, child: impl IntoElement<'a> + 'a) -> Self {
-        child.into_element().apply_to_element(&mut self);
-        self
+impl<'a, ChildFlag> El<ChildFlag> {
+    pub fn child(self, 
+        child: impl IntoElement<'a> + 'a
+    ) -> El<ChildFlagSet>
+        where ChildFlag: FlagNotSet
+    {
+        El {
+            raw_el: self.raw_el.child(child),
+            flags: PhantomData
+        }
+    }
+
+    pub fn child_signal(
+        self, 
+        child: impl Signal<Item = impl IntoElement<'a>> + Unpin + 'static
+    ) -> El<ChildFlagSet> 
+        where ChildFlag: FlagNotSet
+    {
+        El {
+            raw_el: self.raw_el.child_signal(child),
+            flags: PhantomData
+        }
     }
 } 
-
-// ------ IntoElement ------
-
-impl<'a, T: IntoElement<'a> + 'a> ApplyToElement<El<'a>> for T {
-    fn apply_to_element(self, element: &mut El<'a>) {
-        element.child = Some(Box::new(self.into_element()));
-    }
-}

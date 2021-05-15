@@ -1,4 +1,4 @@
-use crate::render_context::RenderContext;
+use dominator::Dom;
 
 // -- modules --
 
@@ -20,6 +20,7 @@ pub use text::Text;
 pub mod raw_el;
 pub use raw_el::RawEl;
 
+<<<<<<< HEAD
 // ------ element_macro ------
 
 #[macro_export]
@@ -43,72 +44,37 @@ macro_rules! element_macro {
         }
     }
 }
+=======
+pub mod raw_text;
+pub use raw_text::RawText;
+>>>>>>> a70fd9927f5b90424db36fda687d6c6344278925
 
 // ------ Element ------
 
 pub trait Element {
-    fn new() -> Self 
-        where Self: Default
-    {
-        Self::default()
-    }
-
-    fn with(mut self, attribute: impl ApplyToElement<Self>) -> Self
-        where Self: Sized
-    {
-        attribute.apply_to_element(&mut self);
-        self
-    }
-
-    fn with_iter(mut self, attribute: impl ApplyToElementForIterator<Self>) -> Self
-        where Self: Sized
-    {
-        attribute.apply_to_element(&mut self);
-        self
-    }
-
-    fn render(&mut self, rcx: RenderContext);
+    fn into_raw_element(self) -> RawElement;
 }
 
-// ------ ApplyToElement ------
+// ------ RawElement ------
 
-pub trait ApplyToElement<T: Element> {
-    fn apply_to_element(self, element: &mut T);
+pub enum RawElement {
+    El(RawEl),
+    Text(RawText),
 }
 
-impl<T: Element, ATTR: ApplyToElement<T>> ApplyToElement<T> for Option<ATTR> {
-    fn apply_to_element(self, element: &mut T) {
-        if let Some(attribute) = self {
-            attribute.apply_to_element(element);
+impl IntoDom for RawElement {
+    fn into_dom(self) -> Dom {
+        match self {
+            RawElement::El(raw_el) => raw_el.into_dom(),
+            RawElement::Text(raw_text) => raw_text.into_dom(),
         }
     }
 }
 
-impl<T: Element, ATTR: ApplyToElement<T>> ApplyToElement<T> for Vec<ATTR> {
-    fn apply_to_element(self, element: &mut T) {
-        for attribute in self {
-            attribute.apply_to_element(element);
-        }
-    }
-}
+// ------ IntoDom ------
 
-// -- ApplyToElementForIterator --
-
-pub trait ApplyToElementForIterator<T: Element> {
-    fn apply_to_element(self, element: &mut T);
-}
-
-impl<T, ATTR, I> ApplyToElementForIterator<T> for I 
-    where 
-        T: Element, 
-        ATTR: ApplyToElement<T>, 
-        I: Iterator<Item = ATTR>
-{
-    fn apply_to_element(self, element: &mut T) {
-        for attribute in self {
-            attribute.apply_to_element(element);
-        }
-    }
+pub trait IntoDom {
+    fn into_dom(self) -> Dom;
 }
 
 // ------ IntoElement ------
@@ -125,103 +91,27 @@ impl<'a, T: Element> IntoElement<'a> for T {
     }
 }
 
-impl<'a> IntoElement<'a> for String {
-    type EL = Text<'a>;
-    fn into_element(self) -> Self::EL {
-        Text::default().with(self)
+// ------ IntoOptionElement ------
+
+pub trait IntoOptionElement<'a> {
+    type EL: Element;
+    fn into_option_element(self) -> Option<Self::EL>; 
+}
+
+impl<'a, E: Element, T: IntoElement<'a, EL = E>> IntoOptionElement<'a> for Option<T> {
+    type EL = E;
+    fn into_option_element(self) -> Option<Self::EL> {
+        self.map(|into_element| into_element.into_element())
     }
 }
 
-impl<'a> IntoElement<'a> for &'a str {
-    type EL = Text<'a>;
-    fn into_element(self) -> Self::EL {
-        Text::default().with(self)
+impl<'a, E: Element, T: IntoElement<'a, EL = E>> IntoOptionElement<'a> for T {
+    type EL = E;
+    fn into_option_element(self) -> Option<Self::EL> {
+        Some(self.into_element())
     }
 }
 
-impl<'a> IntoElement<'a> for u8 {
-    type EL = Text<'a>;
-    fn into_element(self) -> Self::EL {
-        Text::default().with(self.to_string())
-    }
-}
-
-impl<'a> IntoElement<'a> for u16 {
-    type EL = Text<'a>;
-    fn into_element(self) -> Self::EL {
-        Text::default().with(self.to_string())
-    }
-}
-
-impl<'a> IntoElement<'a> for u32 {
-    type EL = Text<'a>;
-    fn into_element(self) -> Self::EL {
-        Text::default().with(self.to_string())
-    }
-}
-
-impl<'a> IntoElement<'a> for u64 {
-    type EL = Text<'a>;
-    fn into_element(self) -> Self::EL {
-        Text::default().with(self.to_string())
-    }
-}
-
-impl<'a> IntoElement<'a> for u128 {
-    type EL = Text<'a>;
-    fn into_element(self) -> Self::EL {
-        Text::default().with(self.to_string())
-    }
-}
-
-impl<'a> IntoElement<'a> for usize {
-    type EL = Text<'a>;
-    fn into_element(self) -> Self::EL {
-        Text::default().with(self.to_string())
-    }
-}
-
-impl<'a> IntoElement<'a> for i8 {
-    type EL = Text<'a>;
-    fn into_element(self) -> Self::EL {
-        Text::default().with(self.to_string())
-    }
-}
-
-impl<'a> IntoElement<'a> for i16 {
-    type EL = Text<'a>;
-    fn into_element(self) -> Self::EL {
-        Text::default().with(self.to_string())
-    }
-}
-
-impl<'a> IntoElement<'a> for i32 {
-    type EL = Text<'a>;
-    fn into_element(self) -> Self::EL {
-        Text::default().with(self.to_string())
-    }
-}
-
-impl<'a> IntoElement<'a> for i64 {
-    type EL = Text<'a>;
-    fn into_element(self) -> Self::EL {
-        Text::default().with(self.to_string())
-    }
-}
-
-impl<'a> IntoElement<'a> for i128 {
-    type EL = Text<'a>;
-    fn into_element(self) -> Self::EL {
-        Text::default().with(self.to_string())
-    }
-}
-
-impl<'a> IntoElement<'a> for isize {
-    type EL = Text<'a>;
-    fn into_element(self) -> Self::EL {
-        Text::default().with(self.to_string())
-    }
-}
 
 
 
