@@ -7,211 +7,136 @@
 The **Counter** example:
 
 ```rust
-#![no_std]
-
 use zoon::*;
 
-blocks!{
+#[static_ref]
+fn counter() -> &'static Mutable<i32> {
+    Mutable::new(0)
+}
 
-    #[s_var]
-    fn counter() -> SVar<i32> {
-        0
-    }
+fn increment() {
+    counter().update(|counter| counter + 1)
+}
 
-    /* Alternative without `SVar` (`i32` is automatically wrapped in `SVar`):
-    #[s_var]
-    fn counter() -> i32 {
-        0
-    }
-    */
+fn decrement() {
+    counter().update(|counter| counter - 1)
+}
 
-    #[update]
-    fn increment() {
-        counter().update(|counter| counter + 1);
-    }
-
-    #[update]
-    fn decrement() {
-        counter().update(|counter| counter - 1);
-    }
-
-    #[cmp]
-    fn root() -> Cmp {
-        col![
-            button![button::on_press(decrement), "-"],
-            counter().inner(),
-            button![button::on_press(increment), "+"],
-        ]
-    }
-
-    /* Non-macro element alternative:
-    #[cmp]
-    fn root() -> Cmp {
-        Column::new()
-            .item(Button::new().on_press(decrement).label("-"))
-            .item(counter().inner()),
-            .item(Button::new().on_press(increment).label("+"))
-    }
-    */
+fn root() -> impl Element {
+    Column::new()
+        .item(Button::new().label("-").on_press(decrement))
+        .item(Text::with_signal(counter().signal()))
+        .item(Button::new().label("+").on_press(increment))
 }
 
 #[wasm_bindgen(start)]
 pub fn start() {
-    start!()
+    start_app("app", root);
+}
+```
+
+The alternative **Counter** example:
+
+```rust
+use zoon::{*, println};
+use std::rc::Rc;
+
+fn root() -> impl Element {
+    println!("I'm different.");
+
+    let counter = Rc::new(Mutable::new(0));
+    let on_press = clone!((counter) move |step: i32| *counter.lock_mut() += step);
+
+    Column::new()
+        .item(Button::new().label("-").on_press(clone!((on_press) move || on_press(-1))))
+        .item_signal(counter.signal())
+        .item(Button::new().label("+").on_press(move || on_press(1)))
+}
+
+#[wasm_bindgen(start)]
+pub fn start() {
+    start_app("app", root);
 }
 ```
 
 ### 1. The App Initialization
 
 1. The function `start` is invoked automatically from the Javascript code.
-1. Zoon's macro `start!` is called to start the app.
-1. The function `counter` is invoked and its default value `0` is stored in the Zoon's internal storage.
-1. The function `root` is invoked and its value is stored in the Zoon's internal storage, too.
-1. The `counter` function was called in the `root`'s body - it means `root` has subscribed to `counter` changes and it will be automatically invoked on each `counter` change. 
+1. Zoon's function `start_app` appends the element returned from the `root` function to the element with the id `app`. 
 
-### 2. The First Render
+    - You can pass also the value `None` instead of `"app"` to mount directly to `body` but it's not recommended.
 
-1. Zoon waits until the browser is ready for rendering.
-1. The entire `#[cmp]` (_component_) tree (only `root` in this example) is rendered to the predefined location in the browser DOM.
+    - When the `root` function is invoked (_note:_ it's invoked only once), all elements are immediately created and rendered to the browser DOM. (It means, for instance, methods `Column::new()` or `.item(..)` writes to DOM.)
 
-### 3. Update
+    - Data stored in functions marked by the attribute `#[static_ref]` are lazily initialized on the first call.
+
+### 2. Update
 
 1. The user clicks the decrement button.
+
 1. The function `decrement` is invoked.
-1. `counter`'s value is decremented. 
-   - _Note_: The function `counter` returns `SVar<i32>` (_**S**tatic **Var**iable_). _SVar_ is basically a copyable wrapper for a reference to the Zoon's internal storage.
-1. `root` component listens for `counter` changes - `root` is automatically recomputed and Zoon waits for the browser to allow rendering.
-1. Components dependent on changed data are effectively rerendered in the DOM. 
-   - _Note_: When a parent component has to be rerendered, it doesn't mean that all its descendants have to be rerendered as well - each `#[cmp]` block may depend on different variables.
+
+1. `counter`'s value is decremented.
+
+1. `counter` has type `Mutable` - it sends its updated value to all associated signals.
+
+1. The new `counter` value is received through a signal and the corresponding text is updated.
+    - In the original example, only the content of the `Text` element is changed.
+    - In the alternative examples, the `counter` value is automatically transformed to a new `Text` element.
+
+_Notes:_
+
+- Read the excellent [tutorial](https://docs.rs/futures-signals/0.3.20/futures_signals/tutorial/index.html) for `Mutable` and signals in the `futures_signals` crate.
+- `zoon::*` reimports most needed types and you can access some Zoon's dependencies by `zoon::library` like `zoon::futures_signals`.
+- `clone!` is a type alias for [enclose::enc](https://docs.rs/enclose/1.1.8/enclose/macro.enc.html).
+- `static_ref`, `clone!` and other things can be disabled or set by Zoon's [features](https://doc.rust-lang.org/cargo/reference/features.html).
 
 ---
 
-## Components
-
-The **Counters** example parts:
-
-```rust
-#[cmp]
-fn click_me_button() -> Cmp {
-    let title = cmp_var(|| "Click me!".to_owned());
-    let click_count = cmp_var(|| 0);
-    row![
-        button![
-            title.inner(),
-            button::on_press(move || {
-                click_count.update(|count| count + 1);
-                title.set(format!("Clicked {}x", click_count.inner()));
-            }),
-        ],
-    ]
-} 
-```
-
-- _Components_ (e.g. `click_me_button`) are groups of _Elements_ (e.g. `Row`, `Button`).
-- You can create a `CmpVar` (_**C**o**mp**onent **Var**iable_) inside them, defined by `cmp_var` with the closure that returns the default value. `CmpVar` represents a "local state" and its value is preserved between component calls. _Components_ are automatically recomputed on `CmpVar` change.
-- _Components_ accept only _Variables_ like `SVar`, `Cache` or `CmpVar` as arguments.
-
-```rust
-#[cmp]
-fn counter_count() -> Cmp {
-    el![
-        format!("Counters: {}", super::counter_count().inner())
-    ]
-}
-```
-
-- _Components_ may depend on other _Variables_ like `SVar` or `Cache`.
-- The _component_ above is automatically recomputed on `counter_count` change, because `counter_count()` definition is marked by the `#[cache]` attribute.
-
-```rust
-#[cmp]
-fn counter_row() -> Cmp {
-    row![
-        (0..super::column_count().inner()).map(|_| counter())
-    ]
-}
-
-#[cmp]
-fn counter() -> Cmp {
-    counter![]
-}
-```
-
-- `counter` component instances above are NOT recomputed on `column_count` change. Only new `counter` instances are created or old ones removed according to the new `column_count` value.
-- A `counter` instance is recomputed only when its `Counter` element (created by `counter!` macro) requires rerendering.
-- `CmpVar`s, elements and nested components are removed (aka _dropped_) on their parent component drop. 
-
 ## Elements
 
-The **Counters** example parts:
+The **Counter** example part:
 
 ```rust
-// counters/frontend/src/app/cmp.rs 
-
-#[cmp]
-fn row_counter() -> Cmp {
-    row![
-        "Rows:",
-        counter![
-            super::row_count().inner(),
-            counter::on_change(super::set_row_count),
-            counter::step(5),
-        ]
-    ]
-}
+Button::new().label("-").on_press(decrement)
 ```
 
-
+The `Button` element:
+   - _Notes:_ 
+       - The only requirement is that the element has to implement the trait `Element`.
+       - `Button` is a Zoon's element, but you'll create custom ones the same way.
+       - The code below may differ from the current `Button` implementation in the Zoon.
 
 ```rust
-// counters/frontend/src/app/cmp/element/counter.rs
-
 use zoon::*;
-use std::rc::Rc;
-use enclose::enc;
+use std::marker::PhantomData;
 
 // ------ ------
 //    Element 
 // ------ ------
 
-element_macro!(counter, Counter::default());
+make_flags!(Label, OnPress);
 
-#[derive(Default)]
-pub struct Counter {
-    value: Option<i32>,
-    on_change: Option<OnChange>,
-    step: Option<i32>,
+pub struct Button<LabelFlag, OnPressFlag> {
+    raw_el: RawEl,
+    flags: PhantomData<(LabelFlag, OnPressFlag)>
 }
 
-impl Element for Counter {
-    #[render]
-    fn render(&mut self, rcx: RenderContext) {
-        let on_change = self.on_change.take().map(|on_change| on_change.0);
-        let step = self.step.unwrap_or(1);
-        
-        let value = el_var(|| 0);
-        if let Some(required_value) = self.value {
-            value.set(required_value);
+impl Button<LabelFlagNotSet, OnPressFlagNotSet> {
+    pub fn new() -> Self {
+        Self {
+            raw_el: RawEl::new("div")
+                .attr("class", "button")
+                .attr("role", "button")
+                .attr("tabindex", "0"),
+            flags: PhantomData,
         }
-        
-        let update_value = move |delta: i32| {
-            value.update(|value| value + delta);
-            if let Some(on_change) = on_change.clone() {
-                on_change(value.inner());
-            }
-            rcx.rerender();
-        };
-        row![
-            button![
-                button::on_press(enc!((update_value) move || update_value(-step))),
-                "-"
-            ],
-            el![value.inner()],
-            button![
-                button::on_press(move || update_value(step)), 
-                 "+"
-            ],
-        ].render(rcx);
+    }
+}
+
+impl<OnPressFlag> Element for Button<LabelFlagSet, OnPressFlag> {
+    fn into_raw_element(self) -> RawElement {
+        self.raw_el.into()
     }
 }
 
@@ -219,139 +144,132 @@ impl Element for Counter {
 //  Attributes 
 // ------ ------
 
-// ------ i32 ------
-
-impl ApplyToElement<Counter> for i32 {
-    fn apply_to_element(self, counter: &mut Counter) {
-        counter.value = Some(self);
+impl<'a, LabelFlag, OnPressFlag> Button<LabelFlag, OnPressFlag> {
+    pub fn label(
+        self, 
+        label: impl IntoElement<'a> + 'a
+    ) -> Button<LabelFlagSet, OnPressFlag>
+        where LabelFlag: FlagNotSet
+    {
+        Button {
+            raw_el: self.raw_el.child(label),
+            flags: PhantomData
+        }
     }
-}
 
-// ------ counter::on_change(...) -------
-
-pub struct OnChange(Rc<dyn Fn(i32)>);
-
-pub fn on_change(on_change: impl FnOnce(i32) + Clone + 'static) -> OnChange {
-    OnChange(Rc::new(move |value| on_change.clone()(value)))
-}
-
-impl ApplyToElement<Counter> for OnChange {
-    fn apply_to_element(self, counter: &mut Counter) {
-        counter.on_change = Some(self);
+    pub fn label_signal(
+        self, 
+        label: impl Signal<Item = impl IntoElement<'a>> + Unpin + 'static
+    ) -> Button<LabelFlagSet, OnPressFlag> 
+        where LabelFlag: FlagNotSet
+    {
+        Button {
+            raw_el: self.raw_el.child_signal(label),
+            flags: PhantomData
+        }
     }
-}
 
-// ------ counter::step(...) -------
-
-pub struct Step(i32);
-
-pub fn step(step: i32) -> Step {
-    Step(step)
-}
-
-impl ApplyToElement<Counter> for Step {
-    fn apply_to_element(self, counter: &mut Counter) {
-        counter.step = Some(self.0);
+    pub fn on_press(
+        self, 
+        on_press: impl FnOnce() + Clone + 'static
+    ) -> Button<LabelFlag, OnPressFlagSet> 
+        where OnPressFlag: FlagNotSet
+    {
+        Button {
+            raw_el: self.raw_el.event_handler(move |_: events::Click| (on_press.clone())()),
+            flags: PhantomData
+        }
     }
-}
+} 
 ```
 
-- `ElVar` (_**El**ement **Var**iable_, defined by `el_var`) is very similar to `CmpVar`, but it does NOT trigger parent component rerendering on change. You have to call `rcx.rerender()` when needed, however keep in mind you can accidentally create an infinite loop if the call is done directly in the `render` method.
+`make_flags!(Label, OnPress);` generates code like:
+```rust
+struct LabelFlagSet;
+struct LabelFlagNotSet;
+impl zoon::FlagSet for LabelFlagSet {}
+impl zoon::FlagNotSet for LabelFlagNotSet {}
 
-- "Native" elements like `Button (button!)`, `El (el!)` or `Column (col!)` are defined in the same way.
+struct OnPressFlagSet;
+struct OnPressFlagNotSet;
+impl zoon::FlagSet for OnPressFlagSet {}
+impl zoon::FlagNotSet for OnPressFlagNotSet {}
+```
 
-- We will write an "_element library_" for Zoon or our apps instead of a "_component library_" (as is common in other frameworks terminology). 
+The only purpose of _flags_ is to enforce extra rules by the Rust compiler.
 
-- All elements should be _accessible_ by default.
-
-A non-macro alternative:
+The compiler doesn't allow to call `label` or `label_signal` if the label is already set. The same rule applies for `on_press` handler.
 
 ```rust
-#[cmp]
-fn row_counter() -> Cmp {
-    Row::new()
-        .item("Rows:")
-        .item(Counter::new()
-            .value(super::row_count().inner())
-            .on_change(super::set_row_count)
-            .step(5)
-        )
-}
+Button::new()
+    .label("-")
+    .label("+")
+```
+fails with
+```
+error[E0277]: the trait bound `LabelFlagSet: FlagNotSet` is not satisfied
+  --> frontend\src\lib.rs:20:14
+   |
+20 |.label("+"))
+   | ^^^^^ the trait `FlagNotSet` is not implemented for `LabelFlagSet`
 ```
 
-```rust
-#[derive(Default)]
-pub struct Counter {
-    value: Option<i32>,
-    on_change: Option<Rc<dyn Fn(i32)>>,
-    step: Option<i32>,
-}
-
-impl Element for Counter {
-    #[render]
-    fn render(&mut self, rcx: RenderContext) {
-        let on_change = self.on_change.take().map(|on_change| on_change);
-        ...
-    }
-}
-
-impl Counter {
-    pub fn value(mut self, value: i32) -> Self {
-        self.value = Some(value);
-        self
-    }
-
-    pub fn on_change(mut self, on_change: impl FnOnce(i32) + Clone + 'static) -> Self {
-        self.on_change = Some(Rc::new(move |value| on_change.clone()(value)));
-        self
-    }
-
-    pub fn step(mut self, step: i32) -> Self {
-        self.step = Some(step);
-        self
-    }
-}
-```
+---
 
 ## Styles
 
 The **Todos** example part:
+   - _Note:_ The code below may differ from the current Todos implementation.
 
 ```rust
-    #[cmp]
-    fn todo(todo: Var<super::Todo>) -> Cmp {
-        let selected = Some(todo) == super::selected_todo();
-        let checkbox_id = cmp_var(ElementId::new);
-        let row_hovered = cmp_var(|| false);
-        row![
-            font::size(24),
-            padding!(15),
-            spacing(10),
-            on_hovered_change(row_hovered.setter()),
-            todo_checkbox(checkbox_id, todo),
-            selected.not().then(|| todo_label(checkbox_id, todo)),
-            selected.then(selected_todo_title),
-            row_hovered.inner().then(|| remove_todo_button(todo)),
-        ]
-    }
+fn todo(todo: Arc<super::Todo>) -> impl Element {
+    let checkbox_id = ElementId::new();
+    let (row_hovered, row_hovered_signal) = Mutable::new_and_signal(false);
+    let selected = {
+        let todo_id = todo.id;
+        super::selected_todo().signal(|selected_id| selected_id == Some(todo_id));
+    };
+    Row::new()
+        .style(Font::new().size(24))
+        .style(Padding::new().all(15))
+        .style(Spacing::new(10))
+        .on_hovered_change(move |hovered| row_hovered.set(hovered))
+        .item(
+            todo_checkbox(checkbox_id, &todo)
+        )
+        .item_signal(
+            selected.map(clone!((todo) move |selected| {
+                if selected { Box::new(selected_todo_title()) } 
+                else { Box::new(todo_label(checkbox_id, &todo)) }
+            }))
+        )
+        .item_signal(
+            row_hovered_signal.map(|hovered| {
+                hovered.then(move || remove_todo_button(&todo))
+            })
+        )
+}
 ```
 
 - CSS concepts / events like _focus_, _hover_ and _breakpoints_ are handled directly by Rust / Zoon _elements_.
 
-- There is no such thing as CSS _margins_ or _selectors_. Padding and element / component nesting are more natural alternatives.
+- There is no such thing as CSS _margins_ or _selectors_. Padding and element nesting are more natural alternatives.
 
 ---
 ## Color
 
 ```rust
-background::color(hsl(0, 0, 100)),
-border::shadow!(
-    shadow::offsetXY(0, 2),
-    shadow::size(0),
-    shadow::blur(4),
-    shadow::color(hsla(0, 0, 0, 20)),
-),
-font::color(if hovered().inner() { hsl(12, 35, 60) } else { hsl(10, 30, 50) }),
+.style(Background::new().color(hsl(0, 0, 100)))
+.style(
+    BorderShadow::new()
+        .offset_xy(0, 2)
+        .size(0)
+        .blur(4)
+        .color(hsla(0, 0, 0, 20))
+)
+.style(Font::new().color_signal(hovered.map(|hovered| {
+    if hovered { hsl(12, 35, 60) } else { hsl(10, 30, 50) }
+})))
 ```
 
 The most commonly used color code systems are:
@@ -426,12 +344,11 @@ Typography is one of the most complex parts of (web) design. But we have to some
 So I suggest to make the _font size_ an alias for the [_cap height_](https://en.wikipedia.org/wiki/Cap_height). And the _font size_ would be also equal to the line height. It means the code:
 
 ```rust
-paragraph![
-    font::size(40),
-    spacing(30),
-    "Moon",
-    "Zoon",
-]
+Paragraph::new()
+    .style(Font::new().size(40))
+    .style(Spacing::new(30))
+    .content("Moon")
+    .content("Zoon")
 ```
 
 would be rendered as:
@@ -447,24 +364,29 @@ Related blog post: [_Font size is useless; let’s fix it_](https://tonsky.me/bl
 ## View & Viewport
 
 The **Time Tracker** example part:
+   - _Note:_ The code below may differ from the current Time Tracker implementation.
 
 ```rust
-    #[cmp]
-    fn root() -> Cmp {
-        view![
-            viewport::on_width_change(super::update_viewport_width),
-            on_click(super::view_clicked),
-            col![
-                header(),
-                menu_panel(),
-                page(),
-            ]
-        ]
-    }
+fn root() -> impl IntoRoot {
+    View::new()
+        .on_click(super::view_clicked)
+        .viewport(
+            ViewPort::new()
+                .on_width_change(super::update_viewport_width)
+        )
+        .child(
+            Column::new()
+                .items(array::IntoIter::new([
+                    header(),
+                    menu_panel(),
+                    page(),
+                ])
+        )
+}
 ```
 
-- `view` represents the root container for the web page.
-- `viewport` represents a part of the _view_ currently visible by the user. It could be used for scrolling and to help with writing responsive elements.
+- `View` represents the root container for the web page.
+- `Viewport` represents a part of the _View_ currently visible by the user. It could be used for scrolling and to help with writing responsive elements.
 - The _view/viewport_ concept will be probably used for scrollable elements, too.  
 
 ---
@@ -476,22 +398,21 @@ The **Time Tracker** example part:
  
 - Could be used as a timeout or stopwatch (to set an interval between callback calls). 
 - See `examples/timer` for the entire code.
+    - _Note:_ The code below may differ from the current `timer` implementation.
 
 ```rust
-    #[s_var]
-    fn timeout() -> SVar<Option<Timer>> {
-        None
-    }
+#[static_ref]
+fn timeout() -> &'static Mutable<Option<Timer>> {
+    Mutable::new(None)
+} 
 
-    #[update]
-    fn start_timeout() {
-        timeout().set(Some(Timer::new(2_000, stop_timeout)));
-    }
+fn start_timeout() {
+    timeout().set(Some(Timer::new(2_000, stop_timeout)));
+}
 
-    #[update]
-    fn stop_timeout() {
-        timeout().set(None);
-    }
+fn stop_timeout() {
+    timeout().set(None);
+}
 ```
 
 ### Connection
@@ -501,10 +422,11 @@ The **Time Tracker** example part:
 - `UpMsg` are sent in a short-lived _fetch_ request, `DownMsg` are sent in a _server-sent event_  to provide real-time communication.
 - A _correlation id_ is automatically generated and sent to the Moon with each request. Moon sends it back. You can also send a token together with the `UpMsg`. 
 - See `examples/chat` for the entire code.
+    - _Note:_ The code below may differ from the current `chat` implementation.
 
 ```rust
-    #[s_var]
-    fn connection() -> SVar<Connection<UpMsg, DownMsg>> {
+    #[static_ref]
+    fn connection() -> &'static Mutable<Connection<UpMsg, DownMsg>> {
         Connection::new(|down_msg, _| {
             if let DownMsg::MessageReceived(message) = down_msg {
                 ...
@@ -512,11 +434,8 @@ The **Time Tracker** example part:
         })
     }
 
-    #[update]
     fn send_message() {
-        connection().use_ref(|connection| {
-            connection.send_up_msg(UpMsg::SendMessage(...), None);
-        });
+        connection().lock_ref().send_up_msg(UpMsg::SendMessage(...), None);
     }
 ```
 
@@ -524,6 +443,7 @@ The **Time Tracker** example part:
 
 - An example with the nested route `admin::Route`.
 - See `examples/pages` for the entire code.
+    - _Note:_ The code below may differ from the current `pages` implementation.
 
 ```rust
     #[route]
@@ -538,8 +458,9 @@ The **Time Tracker** example part:
 
 _
 
-- A more complete example with _guards_ and Zoon's function `url()`. 
+- A more complete example with _guards_ and Zoon's URL helpers. 
 - See `examples/time_tracker` for the entire code.
+    - _Note:_ The code below may differ from the current `time_tracker` implementation.
 
 ```rust
 
@@ -578,12 +499,10 @@ _
         Route::home()
     }
 
-    #[cache]
-    fn route() -> Cache<Route> {
-        url().map(Route::from)
+    fn route() -> impl Signal<Item = Route> {
+        url().signal().map(Route::from)
     }
 
-    #[update]
     fn set_route(route: Route) {
         url().set(Url::from(route))
     }
@@ -636,6 +555,7 @@ _
       - [React UseGesture](https://use-gesture.netlify.app/)
       - [elm-animator](https://korban.net/posts/elm/2020-04-07-using-elm-animator-with-elm-ui/)
       - "svelte has really good set of animation examples in their tutorial site. Incase it can help somehow [section 9 -11]" (by Ruman on [chat](https://discord.gg/eGduTxK2Es))
+      - [rust-dominator/examples/animation](https://github.com/Pauan/rust-dominator/blob/master/examples/animation/src/lib.rs)
 
 1. _"Hey Martin, what about [Seed](https://seed-rs.org/)?"_
    - Zoon and Seed have very different features and goals. I assume we will be able to implement some interesting features inspired by Zoon in Seed, if needed. I'll maintain Seed as usual.

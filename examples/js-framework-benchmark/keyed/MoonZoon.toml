@@ -1,6 +1,10 @@
 port = 8080
 # port = 8443
 https = false
+<<<<<<< HEAD
+=======
+cache_busting = true
+>>>>>>> a70fd9927f5b90424db36fda687d6c6344278925
 
 [redirect_server]
 port = 8081
@@ -13,6 +17,7 @@ frontend = [
     "frontend/src",
     "../../../crates/zoon/Cargo.toml",
     "../../../crates/zoon/src",
+<<<<<<< HEAD
     "../../../crates/blocks_macro/Cargo.toml",
     "../../../crates/blocks_macro/src",
     "../../../crates/update_macro/Cargo.toml",
@@ -25,6 +30,10 @@ frontend = [
     "../../../crates/tracked_call_macro/src",
     "../../../crates/cmp_macro/Cargo.toml",
     "../../../crates/cmp_macro/src",
+=======
+    "../../../crates/static_ref_macro/Cargo.toml",
+    "../../../crates/static_ref_macro/src",
+>>>>>>> a70fd9927f5b90424db36fda687d6c6344278925
 ]
 backend = [
     "backend/Cargo.toml",

@@ -1,31 +1,29 @@
-use wasm_bindgen::JsCast;
-use crate::{RenderContext, dom::dom_element, __TrackedCall, __TrackedCallStack, Element, IntoElement, ApplyToElement, render, element_macro};
+use crate::*;
+use std::marker::PhantomData;
 
 // ------ ------
 //   Element 
 // ------ ------
 
-element_macro!(col, Column::default());
+make_flags!(Empty);
 
-#[derive(Default)]
-pub struct Column<'a> {
-    items: Vec<Box<dyn Element + 'a>>,
+pub struct Column<EmptyFlag> {
+    raw_el: RawEl,
+    flags: PhantomData<EmptyFlag>
 }
 
-impl<'a> Element for Column<'a> {
-    #[render]
-    fn render(&mut self, rcx: RenderContext) {
-        // log!("column, index: {}", rcx.index);
+impl Column<EmptyFlagSet> {
+    pub fn new() -> Self {
+        Self {
+            raw_el: RawEl::new("div").attr("class", "column"),
+            flags: PhantomData,
+        }
+    }
+}
 
-        let node = dom_element(rcx, |mut rcx| {
-            for item in &mut self.items {
-                item.render(rcx.inc_index().clone());
-            }
-        });
-        node.update_mut(|node| {
-            let element = node.node_ws.unchecked_ref::<web_sys::Element>();
-            element.set_attribute("class", "column").unwrap();
-        });
+impl Element for Column<EmptyFlagNotSet> {
+    fn into_raw_element(self) -> RawElement {
+        self.raw_el.into()
     }
 }
 
@@ -33,24 +31,42 @@ impl<'a> Element for Column<'a> {
 //  Attributes 
 // ------ ------
 
-impl<'a> Column<'a> {
-    pub fn item(mut self, item: impl IntoElement<'a> + 'a) -> Self {
-        item.into_element().apply_to_element(&mut self);
-        self
+impl<'a, EmptyFlag> Column<EmptyFlag> {
+    pub fn item(self, 
+        item: impl IntoOptionElement<'a> + 'a
+    ) -> Column<EmptyFlagNotSet> {
+        Column {
+            raw_el: self.raw_el.child(item),
+            flags: PhantomData
+        }
     }
 
-    pub fn items<IE: IntoElement<'a> + 'a>(mut self, items: impl IntoIterator<Item = IE>) -> Self {
-        for item in items.into_iter() {
-            item.into_element().apply_to_element(&mut self);
+    pub fn item_signal(
+        self, 
+        item: impl Signal<Item = impl IntoOptionElement<'a>> + Unpin + 'static
+    ) -> Column<EmptyFlagNotSet> {
+        Column {
+            raw_el: self.raw_el.child_signal(item),
+            flags: PhantomData
         }
-        self
+    }
+
+    pub fn items(self, 
+        items: impl IntoIterator<Item = impl IntoElement<'a> + 'a>
+    ) -> Column<EmptyFlagNotSet> {
+        Column {
+            raw_el: self.raw_el.children(items),
+            flags: PhantomData
+        }
+    }
+
+    pub fn items_signal_vec(
+        self, 
+        items: impl SignalVec<Item = impl IntoElement<'a>> + Unpin + 'static
+    ) -> Column<EmptyFlagNotSet> {
+        Column {
+            raw_el: self.raw_el.children_signal_vec(items),
+            flags: PhantomData
+        }
     }
 } 
-
-// ------ IntoElement ------
-
-impl<'a, T: IntoElement<'a> + 'a> ApplyToElement<Column<'a>> for T {
-    fn apply_to_element(self, column: &mut Column<'a>) {
-        column.items.push(Box::new(self.into_element()));
-    }
-}
